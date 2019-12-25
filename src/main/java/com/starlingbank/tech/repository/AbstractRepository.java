@@ -1,18 +1,23 @@
 package com.starlingbank.tech.repository;
 
-import com.starlingbank.tech.common.Tuple;
+import com.starlingbank.tech.exception.StarlingBusinessException;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.client.RestClientException;
 
-import java.util.List;
+import java.util.Collections;
 import java.util.function.Function;
 
 abstract class AbstractRepository {
-    /*protected Function<List<Tuple<String, String>>, HttpHeaders> createHttpHeaders = headersTuple -> {
+    protected final Function<String, Function<Exception, StarlingBusinessException>> exceptionFunction =
+            msg -> error -> error == null? new StarlingBusinessException(msg) : new StarlingBusinessException(msg, error);
+
+
+    protected HttpHeaders getBasicAuthHttpHeaders(String clientAuthToken) {
         HttpHeaders headers = new HttpHeaders();
-        for (Tuple<String, String> header : headersTuple) {
-            headers.add(header._1, header._2);
-        }
+        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        headers.setBearerAuth(clientAuthToken);
 
         return headers;
-    };*/
+    }
 }

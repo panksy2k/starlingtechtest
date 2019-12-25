@@ -1,10 +1,10 @@
 package com.starlingbank.tech.domain;
 
-import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.experimental.FieldDefaults;
+
 import java.io.Serializable;
 
 @AllArgsConstructor

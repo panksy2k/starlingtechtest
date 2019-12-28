@@ -2,6 +2,7 @@ package com.starlingbank.tech.api.roundUp;
 
 import com.starlingbank.tech.api.AbstractRoundupController;
 import com.starlingbank.tech.common.Tuple;
+import com.starlingbank.tech.domain.RoundupMoney;
 import com.starlingbank.tech.service.RoundUpAccountTransactions;
 import com.starlingbank.tech.util.DateTimeValidator;
 import org.slf4j.Logger;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.validation.ConstraintViolationException;
 import java.lang.invoke.MethodHandles;
 import java.util.Locale;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/roundup")
@@ -27,7 +29,7 @@ public class SaveTheChangeAPI extends AbstractRoundupController {
     private RoundUpAccountTransactions roundUpAccountTransactions;
 
     @GetMapping(value = "/account/{accountUID}/transactions/startDate/{startDate}")
-    public ResponseEntity<String> doRoundUpOnWeeklyTransactions(
+    public ResponseEntity<Set<RoundupMoney>> doRoundUpOnWeeklyTransactions(
             @PathVariable("accountUID") String accountUID,
             @PathVariable("startDate") int isoStartDate) {
 
@@ -35,12 +37,12 @@ public class SaveTheChangeAPI extends AbstractRoundupController {
 
         //Check if startDate is correct format or not
         boolean isDateISOFormat = DateTimeValidator.isDateISOFormat("yyyyMMdd", String.valueOf(isoStartDate), Locale.UK);
-        if(!isDateISOFormat) {
+        if (!isDateISOFormat) {
             throw new ConstraintViolationException("startDate should be in yyyyMMdd format!", null);
         }
 
         //Get the transactions for an account under a week
         return ResponseEntity.ok(roundUpAccountTransactions.getAccountTransactionsRoundup(Tuple.of("something", String.valueOf(isoStartDate))));
-            //Round off the transaction amount
+        //Round off the transaction amount
     }
 }

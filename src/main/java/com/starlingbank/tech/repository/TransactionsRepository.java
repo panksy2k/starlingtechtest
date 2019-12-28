@@ -13,7 +13,9 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.lang.invoke.MethodHandles;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -28,14 +30,15 @@ public class TransactionsRepository extends AbstractRepository {
     @Autowired
     private RestTemplate restTemplate;
 
-    public String getAllTransactions(Tuple<String, String> accountUidCategoryUidTuple, Tuple<LocalDateTime, LocalDateTime> dateRangeTuple) {
+    public String getAllTransactions(Tuple<String, String> accountUidCategoryUidTuple, Tuple<Instant, Instant> dateRangeTuple) {
         try {
-            Map<String, String> uriVariables = new HashMap<>(1);
+            Map<String, Object> uriVariables = new HashMap<>(2);
             uriVariables.put("accountUid", accountUidCategoryUidTuple._1);
             uriVariables.put("categoryUid", accountUidCategoryUidTuple._2);
 
             String url = UriComponentsBuilder
                     .fromHttpUrl(starlingPropertyConfigurationHolder.getApiBaseUrl() + "/v2/feed/account/{accountUid}/category/{categoryUid}/transactions-between")
+                    .uriVariables(uriVariables)
                     .queryParam("minTransactionTimestamp", dateRangeTuple._1)
                     .queryParam("maxTransactionTimestamp", dateRangeTuple._2)
                     .build().toUriString();

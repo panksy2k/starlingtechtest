@@ -1,16 +1,15 @@
 package com.starlingbank.tech.domain;
 
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.io.Serializable;
-import java.time.LocalDate;
+import java.time.Instant;
 
 @NoArgsConstructor
-@Setter @Getter
+@Data
 public class RoundupMoney implements Serializable {
     String accountUID;
     Money roundupAmount;
-    LocalDate fromDate, endDate;
+    Instant fromDate, endDate;
 }

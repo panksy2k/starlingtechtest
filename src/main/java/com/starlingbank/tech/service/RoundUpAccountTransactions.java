@@ -2,11 +2,14 @@ package com.starlingbank.tech.service;
 
 import com.starlingbank.tech.common.Tuple;
 import com.starlingbank.tech.config.StarlingPropertyConfigurationHolder;
+import com.starlingbank.tech.domain.Currency;
+import com.starlingbank.tech.domain.Money;
 import com.starlingbank.tech.domain.RoundupMoney;
 import com.starlingbank.tech.exception.StarlingBusinessException;
 import com.starlingbank.tech.repository.AccountRepository;
 import com.starlingbank.tech.repository.TransactionsRepository;
-import com.starlingbank.tech.util.DateTimeValidator;
+import com.starlingbank.tech.transformer.TransactionFeedTransformer;
+import com.starlingbank.tech.util.DateTimeUtil;
 import mjson.Json;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,11 +17,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.lang.invoke.MethodHandles;
-import java.time.*;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-
-import static org.springframework.boot.Banner.Mode.LOG;
+import java.util.function.Function;
 
 @Service
 public class RoundUpAccountTransactions {
@@ -33,7 +39,12 @@ public class RoundUpAccountTransactions {
     @Autowired
     private TransactionsRepository transactionsRepository;
 
-    public Set<RoundupMoney> getAccountTransactionsRoundup(Tuple<String, String> accountUIDTransactionStartDate) {
+    private final Function<BigDecimal, Double> bigToDouble = BigDecimal::doubleValue;
+    private final Function<Double, Double> roundupCeiling = Math::ceil;
+    private final Function<Double, BigDecimal> doubleToBig = dblAmt -> BigDecimal.valueOf(dblAmt).setScale(2, RoundingMode.HALF_UP);
+    private final Function<BigDecimal, BigDecimal> roundedBigDecimalAmt = doubleToBig.compose(roundupCeiling.compose(bigToDouble));
+
+    public Set<RoundupMoney> getAccountTransactionsRoundup(String transactionStartDate) {
         String customerAccountsJSON = accountRepository.getCustomerAccounts();
         Json accounts = Json.read(customerAccountsJSON).at("accounts");
         if (accounts == null || !accounts.isArray()) {
@@ -48,21 +59,32 @@ public class RoundUpAccountTransactions {
         Set<RoundupMoney> roundupAccountsSet = new HashSet<>(jsons.size());
         jsons.stream().forEach(account -> {
             String accountUid = account.at("accountUid").asString();
-            Tuple<Instant, Instant> transactionsDateTimeBoundary = getTransactionDateRange(accountUIDTransactionStartDate._2);
+            Tuple<Instant, Instant> transactionsDateTimeBoundary = getTransactionDateRange(transactionStartDate);
 
-            LOG.info("Account UID {}", accountUid);
 
-            String feed = transactionsRepository.getAllTransactions(
+            String feedTransactionsByAccount = transactionsRepository.getAllTransactions(
                     Tuple.of(accountUid, account.at("defaultCategory").asString()),
                     transactionsDateTimeBoundary);
+
+            LOG.info("Account UID {} and its feed {}", accountUid, feedTransactionsByAccount);
+
+            List<BigDecimal> allRoundedUpOutwardExpenses = TransactionFeedTransformer.transform(
+                    feedTransactionsByAccount,
+                    criteria -> criteria.has("direction") && criteria.at("direction").getValue().equals("OUT"),
+                    roundedBigDecimalAmt);
 
             RoundupMoney roundupMoney = new RoundupMoney();
             roundupMoney.setAccountUID(accountUid);
             roundupMoney.setFromDate(transactionsDateTimeBoundary._1);
             roundupMoney.setEndDate(transactionsDateTimeBoundary._2);
-            roundupMoney.setRoundupAmount(null); //TODO: This is what we need to calculate
 
-            System.out.println(feed);
+            if(allRoundedUpOutwardExpenses.isEmpty()) {
+                roundupMoney.setRoundupAmount(new Money(Currency.GBP, 0L));
+            } else {
+                BigDecimal totalRoundupAmount = allRoundedUpOutwardExpenses.stream().reduce(BigDecimal.ZERO, (a1, a2) -> a1.add(a2));
+                roundupMoney.setRoundupAmount(new Money(Currency.GBP, totalRoundupAmount.multiply(BigDecimal.valueOf(100)).longValue()));
+            }
+
             roundupAccountsSet.add(roundupMoney);
         });
 
@@ -70,16 +92,16 @@ public class RoundUpAccountTransactions {
     }
 
     private Tuple<Instant, Instant> getTransactionDateRange(String startDate) {
-        Optional<LocalDate> transactionStartLocalDate = DateTimeValidator.convertStringToLocalDate(DateTimeFormatter.ofPattern("yyyyMMdd", Locale.UK), startDate);
+        Optional<LocalDate> transactionStartLocalDate = DateTimeUtil.convertStringToLocalDate(DateTimeFormatter.ofPattern("yyyyMMdd", Locale.UK), startDate);
         if (!transactionStartLocalDate.isPresent()) {
             throw new StarlingBusinessException("Transaction Start Date does not comply with standard yyyyMMdd ISO8601 format - cannot convert to LocalDate!");
         }
 
         LocalDateTime transactionStartDateTime = transactionStartLocalDate.get().atStartOfDay();
-        LocalDateTime transactionEndDateTime = transactionStartDateTime.plusWeeks(1).withHour(23).withMinute(59).withSecond(59);
+        LocalDateTime transactionEndDateTime = transactionStartDateTime.plusWeeks(1).minusDays(1).withHour(23).withMinute(59).withSecond(59);
 
-        Optional<Instant> formattedZuluStartDateTime = DateTimeValidator.getUTCZuluDateTime(transactionStartDateTime);
-        Optional<Instant> formattedZuluEndDateTime = DateTimeValidator.getUTCZuluDateTime(transactionEndDateTime);
+        Optional<Instant> formattedZuluStartDateTime = DateTimeUtil.getUTCZuluDateTime(transactionStartDateTime);
+        Optional<Instant> formattedZuluEndDateTime = DateTimeUtil.getUTCZuluDateTime(transactionEndDateTime);
 
         if(!formattedZuluStartDateTime.isPresent() || !formattedZuluEndDateTime.isPresent()) {
             throw new StarlingBusinessException("Cannot convert dates to Zulu / UTC format");

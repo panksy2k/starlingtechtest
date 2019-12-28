@@ -6,7 +6,7 @@ import java.time.format.DateTimeParseException;
 import java.util.Locale;
 import java.util.Optional;
 
-public class DateTimeValidator {
+public class DateTimeUtil {
     public static boolean isDateISOFormat(String format, String value, Locale locale) {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(format, locale);
 

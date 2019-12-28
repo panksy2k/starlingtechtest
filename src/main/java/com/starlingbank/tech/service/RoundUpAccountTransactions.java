@@ -66,7 +66,7 @@ public class RoundUpAccountTransactions {
                     Tuple.of(accountUid, account.at("defaultCategory").asString()),
                     transactionsDateTimeBoundary);
 
-            List<BigDecimal> allRoundedUpOutwardExpenses = TransactionFeedTransformer.transform(
+            List<Tuple<Currency, BigDecimal>> allRoundedUpOutwardExpenses = TransactionFeedTransformer.transform(
                     feedTransactionsByAccount,
                     criteria -> criteria.has("direction") && criteria.at("direction").getValue().equals("OUT"),
                     roundedBigDecimalAmt);
@@ -79,8 +79,8 @@ public class RoundUpAccountTransactions {
             if (allRoundedUpOutwardExpenses.isEmpty()) {
                 roundupMoney.setRoundupAmount(new Money(Currency.GBP, 0L));
             } else {
-                BigDecimal totalRoundupAmount = allRoundedUpOutwardExpenses.stream().reduce(BigDecimal.ZERO, (a1, a2) -> a1.add(a2));
-                roundupMoney.setRoundupAmount(new Money(Currency.GBP, totalRoundupAmount.multiply(BigDecimal.valueOf(100)).longValue()));
+                BigDecimal totalRoundupAmount = allRoundedUpOutwardExpenses.stream().map(t -> t._2).reduce(BigDecimal.ZERO, (a1, a2) -> a1.add(a2));
+                roundupMoney.setRoundupAmount(new Money(allRoundedUpOutwardExpenses.stream().findFirst().get()._1, totalRoundupAmount.multiply(BigDecimal.valueOf(100)).longValue()));
             }
 
             roundupAccountsSet.add(roundupMoney);

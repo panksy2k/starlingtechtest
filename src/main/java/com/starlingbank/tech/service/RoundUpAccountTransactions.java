@@ -40,33 +40,31 @@ public class RoundUpAccountTransactions {
     private TransactionsRepository transactionsRepository;
 
     private final Function<BigDecimal, Double> bigToDouble = BigDecimal::doubleValue;
-    private final Function<Double, Double> roundupCeiling = Math::ceil;
+    private final Function<Double, Double> roundupCeiling = originalAmt -> Math.ceil(originalAmt) - originalAmt;
     private final Function<Double, BigDecimal> doubleToBig = dblAmt -> BigDecimal.valueOf(dblAmt).setScale(2, RoundingMode.HALF_UP);
     private final Function<BigDecimal, BigDecimal> roundedBigDecimalAmt = doubleToBig.compose(roundupCeiling.compose(bigToDouble));
 
     public Set<RoundupMoney> getAccountTransactionsRoundup(String transactionStartDate) {
         String customerAccountsJSON = accountRepository.getCustomerAccounts();
-        Json accounts = Json.read(customerAccountsJSON).at("accounts");
-        if (accounts == null || !accounts.isArray()) {
-            throw new StarlingBusinessException("accounts information fetched from /v2/accounts API is not a recognizable json format");
+        Json accountsJsonUp = Json.read(customerAccountsJSON);
+
+        if (!accountsJsonUp.has("accounts") || !accountsJsonUp.at("accounts").isArray()) {
+            throw new StarlingBusinessException("Accounts information fetched from /v2/accounts API is not a recognizable json array format");
         }
 
-        List<Json> jsons = accounts.asJsonList();
+        List<Json> jsons = accountsJsonUp.at("accounts").asJsonList();
         if (jsons.size() == 0) {
-            //TODO: send 0 as roundup - since no transactions exist
+            throw new StarlingBusinessException("No accounts found for the customer -- and hence no transactions/roundups required!");
         }
+
+        final Tuple<Instant, Instant> transactionsDateTimeBoundary = getTransactionDateRange(transactionStartDate);
 
         Set<RoundupMoney> roundupAccountsSet = new HashSet<>(jsons.size());
-        jsons.stream().forEach(account -> {
+        for (Json account : jsons) {
             String accountUid = account.at("accountUid").asString();
-            Tuple<Instant, Instant> transactionsDateTimeBoundary = getTransactionDateRange(transactionStartDate);
-
-
             String feedTransactionsByAccount = transactionsRepository.getAllTransactions(
                     Tuple.of(accountUid, account.at("defaultCategory").asString()),
                     transactionsDateTimeBoundary);
-
-            LOG.info("Account UID {} and its feed {}", accountUid, feedTransactionsByAccount);
 
             List<BigDecimal> allRoundedUpOutwardExpenses = TransactionFeedTransformer.transform(
                     feedTransactionsByAccount,
@@ -78,7 +76,7 @@ public class RoundUpAccountTransactions {
             roundupMoney.setFromDate(transactionsDateTimeBoundary._1);
             roundupMoney.setEndDate(transactionsDateTimeBoundary._2);
 
-            if(allRoundedUpOutwardExpenses.isEmpty()) {
+            if (allRoundedUpOutwardExpenses.isEmpty()) {
                 roundupMoney.setRoundupAmount(new Money(Currency.GBP, 0L));
             } else {
                 BigDecimal totalRoundupAmount = allRoundedUpOutwardExpenses.stream().reduce(BigDecimal.ZERO, (a1, a2) -> a1.add(a2));
@@ -86,7 +84,7 @@ public class RoundUpAccountTransactions {
             }
 
             roundupAccountsSet.add(roundupMoney);
-        });
+        }
 
         return roundupAccountsSet;
     }
@@ -103,7 +101,7 @@ public class RoundUpAccountTransactions {
         Optional<Instant> formattedZuluStartDateTime = DateTimeUtil.getUTCZuluDateTime(transactionStartDateTime);
         Optional<Instant> formattedZuluEndDateTime = DateTimeUtil.getUTCZuluDateTime(transactionEndDateTime);
 
-        if(!formattedZuluStartDateTime.isPresent() || !formattedZuluEndDateTime.isPresent()) {
+        if (!formattedZuluStartDateTime.isPresent() || !formattedZuluEndDateTime.isPresent()) {
             throw new StarlingBusinessException("Cannot convert dates to Zulu / UTC format");
         }
 

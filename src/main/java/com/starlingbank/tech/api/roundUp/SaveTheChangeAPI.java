@@ -28,7 +28,6 @@ public class SaveTheChangeAPI extends AbstractRoundupController {
 
     @GetMapping(value = "/account/transactions/startDate/{startDate}")
     public ResponseEntity<Set<RoundupMoney>> doRoundUpOnWeeklyTransactions(@PathVariable("startDate") int isoStartDate) {
-
         LOG.info("Calling API to round-up the transactions");
 
         //Check if startDate is correct format or not
